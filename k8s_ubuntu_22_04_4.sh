@@ -64,7 +64,7 @@ install_docker() {
 
             sudo usermod -aG docker $USER
             sudo chmod 666 /var/run/docker.sock
-        ) &  # 백그라운드에서 실행
+        ) >> "$LOG_FILE" 2>&1 &  # 블록 전체 출력을 로그 파일로 리다이렉션하고 백그라운드에서 실행
         local pid=$!  # 백그라운드 작업의 PID 저장
         show_spinner "$pid"  # 스피너 표시
         check_for_errors "$pid"  # 오류 발생 확인
@@ -85,7 +85,7 @@ update_system_configuration() {
             sudo sed -i '/^\s*disabled_plugins/ s/^/#/' "$CONFIG_FILE"
             sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' "$CONFIG_FILE"
             sudo systemctl restart containerd
-        ) &
+        ) >> "$LOG_FILE" 2>&1 &  # 블록 전체 출력을 로그 파일로 리다이렉션하고 백그라운드에서 실행
         local pid=$!
         check_for_errors "$pid"
     else
@@ -93,21 +93,21 @@ update_system_configuration() {
     fi
 
     log "containerd 데몬을 재시작 합니다."
-    sudo systemctl restart containerd
+    sudo systemctl restart containerd >> "$LOG_FILE" 2>&1
 
     log "스왑 공간을 비활성화하고, socat을 설치합니다."
     (
         sudo swapoff -a
         sudo sed -i '/swap/s/^/#/' /etc/fstab
         sudo apt-get install socat
-    ) &
+    ) >> "$LOG_FILE" 2>&1 &  # 블록 전체 출력을 로그 파일로 리다이렉션하고 백그라운드에서 실행
     local pid=$!
     check_for_errors "$pid"
 
     log "ip_forward를 활성화합니다."
     (
         sudo sysctl -w net.ipv4.ip_forward=1
-    ) &
+    ) >> "$LOG_FILE" 2>&1 &  # 블록 전체 출력을 로그 파일로 리다이렉션하고 백그라운드에서 실행
     local pid=$!
     check_for_errors "$pid"
 
@@ -117,7 +117,7 @@ update_system_configuration() {
         log "IP forwarding 설정이 이미 존재합니다."
     else
         log "IP forwarding 설정을 추가합니다."
-        echo "net.ipv4.ip_forward=1" | sudo tee -a "$SYSCTL_CONF"
+        echo "net.ipv4.ip_forward=1" | sudo tee -a "$SYSCTL_CONF" >> "$LOG_FILE" 2>&1
     fi
 
     log "모든 방화벽을 해제합니다."
@@ -127,7 +127,7 @@ update_system_configuration() {
         sudo systemctl stop NetworkManager
         sudo systemctl disable NetworkManager
         sudo ufw disable
-    ) &
+    ) >> "$LOG_FILE" 2>&1 &  # 블록 전체 출력을 로그 파일로 리다이렉션하고 백그라운드에서 실행
     local pid=$!
     check_for_errors "$pid"
 }
@@ -147,7 +147,7 @@ install_kubernetes() {
             sudo apt-get install -y kubelet kubeadm kubectl
             sudo apt-mark hold kubelet kubeadm kubectl
             sudo systemctl enable --now kubelet
-        ) &  # Kubernetes 설치 명령어를 백그라운드에서 실행
+        ) >> "$LOG_FILE" 2>&1 &  # 블록 전체 출력을 로그 파일로 리다이렉션하고 백그라운드에서 실행
         local pid=$!  # 백그라운드 작업의 PID 저장
         show_spinner "$pid"  # 스피너 표시
         check_for_errors "$pid"  # 오류 발생 확인
