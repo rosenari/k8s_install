@@ -9,7 +9,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 install_cni() {
-  sudo kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+  kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 }
 
 install_cni
