@@ -2,15 +2,21 @@
 
 # k8s install script
 
+LOG_FILE="/var/log/k8s_install.log"  # 로그 파일 위치
+ERROR_OCCURRED=0  # 에러 발생 여부를 추적하는 변수
+
 # 현재 사용자 확인 및 root가 아니면 스크립트를 root로 다시 실행
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script needs to be run as root. Attempting to rerun as root..."
     exec sudo "$0" "$@"  # 현재 스크립트를 sudo로 다시 실행
 fi
 
+# 로그와 화면에 동시에 출력하는 함수
+log() {
+    echo "$1" | tee -a "$LOG_FILE"
+}
+
 # 로딩 스피너 출력 함수
-# 매개변수:
-#   pid: 프로세스의 PID (Process ID)로, 이 PID에 대해 스피너를 표시합니다.
 show_spinner() {
     local pid=$1
     local spinner=('|' '/' '-' '\\')
@@ -25,23 +31,22 @@ show_spinner() {
 }
 
 # 오류가 발생할 경우 메시지를 표시하는 함수
-# 매개변수:
-#   pid: 프로세스의 PID
 check_for_errors() {
     local pid=$1
     wait $pid  # 프로세스 완료 대기
     local exit_code=$?  # 프로세스 종료 코드
     if [ $exit_code -ne 0 ]; then
-        echo "Error occurred in process $pid with exit code $exit_code."
+        ERROR_OCCURRED=1  # 에러가 발생했음을 기록
+        log "Error occurred in process $pid with exit code $exit_code."
     fi
 }
 
 # Docker 설치 확인 및 설치
 install_docker() {
     if command -v docker &> /dev/null; then
-        echo "Docker is already installed."
+        log "Docker is already installed."
     else
-        echo "Installing Docker..."
+        log "Installing Docker..."
         (
             sudo apt-get update
             sudo apt-get install -y ca-certificates curl
@@ -63,7 +68,7 @@ install_docker() {
         local pid=$!  # 백그라운드 작업의 PID 저장
         show_spinner "$pid"  # 스피너 표시
         check_for_errors "$pid"  # 오류 발생 확인
-        echo "Docker installed."
+        log "Docker installed."
     fi
 }
 
@@ -72,7 +77,7 @@ update_system_configuration() {
     mkdir -p /etc/containerd
     CONFIG_FILE="/etc/containerd/config.toml"
 
-    echo "$CONFIG_FILE 파일의 설정을 수정합니다."
+    log "$CONFIG_FILE 파일의 설정을 수정합니다."
     if [ -f "$CONFIG_FILE" ]; then
         cp "$CONFIG_FILE" "$CONFIG_FILE.bak"
         (
@@ -84,13 +89,13 @@ update_system_configuration() {
         local pid=$!
         check_for_errors "$pid"
     else
-        echo "$CONFIG_FILE 파일이 존재하지 않습니다."
+        log "$CONFIG_FILE 파일이 존재하지 않습니다."
     fi
 
-    echo "containerd 데몬을 재시작 합니다."
+    log "containerd 데몬을 재시작 합니다."
     sudo systemctl restart containerd
 
-    echo "스왑 공간을 비활성화하고, socat을 설치합니다."
+    log "스왑 공간을 비활성화하고, socat을 설치합니다."
     (
         sudo swapoff -a
         sudo sed -i '/swap/s/^/#/' /etc/fstab
@@ -99,7 +104,7 @@ update_system_configuration() {
     local pid=$!
     check_for_errors "$pid"
 
-    echo "ip_forward를 활성화합니다."
+    log "ip_forward를 활성화합니다."
     (
         sudo sysctl -w net.ipv4.ip_forward=1
     ) &
@@ -109,13 +114,13 @@ update_system_configuration() {
     SYSCTL_CONF="/etc/sysctl.conf"
 
     if grep -q "^net.ipv4.ip_forward=1" "$SYSCTL_CONF"; then
-        echo "IP forwarding 설정이 이미 존재합니다."
+        log "IP forwarding 설정이 이미 존재합니다."
     else
-        echo "IP forwarding 설정을 추가합니다."
+        log "IP forwarding 설정을 추가합니다."
         echo "net.ipv4.ip_forward=1" | sudo tee -a "$SYSCTL_CONF"
     fi
 
-    echo "모든 방화벽을 해제합니다."
+    log "모든 방화벽을 해제합니다."
     (
         sudo systemctl stop firewalld
         sudo systemctl disable firewalld
@@ -130,9 +135,9 @@ update_system_configuration() {
 # Kubernetes 설치 확인 및 설치
 install_kubernetes() {
     if command -v kubectl &> /dev/null; then
-        echo "Kubernetes (kubectl) is already installed."
+        log "Kubernetes (kubectl) is already installed."
     else
-        echo "Installing Kubernetes..."
+        log "Installing Kubernetes..."
         (
             sudo apt-get update
             sudo apt-get install -y apt-transport-https ca-certificates curl gpg
@@ -146,11 +151,20 @@ install_kubernetes() {
         local pid=$!  # 백그라운드 작업의 PID 저장
         show_spinner "$pid"  # 스피너 표시
         check_for_errors "$pid"  # 오류 발생 확인
-        echo "Kubernetes installed."
+        log "Kubernetes installed."
     fi
 }
 
 # 메인 스크립트 실행
+log "Starting k8s install script."
 install_docker
 update_system_configuration
 install_kubernetes
+
+# 오류가 발생하지 않았으면 로그 파일 삭제
+if [ $ERROR_OCCURRED -eq 0 ]; then
+    log "Installation completed successfully. Removing log file."
+    rm -f "$LOG_FILE"
+else
+    log "Installation completed with errors. Log file kept: $LOG_FILE"
+fi
