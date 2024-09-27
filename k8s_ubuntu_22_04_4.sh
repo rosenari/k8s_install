@@ -124,8 +124,6 @@ update_system_configuration() {
     (
         sudo systemctl stop firewalld
         sudo systemctl disable firewalld
-        sudo systemctl stop NetworkManager
-        sudo systemctl disable NetworkManager
         sudo ufw disable
     ) >> "$LOG_FILE" 2>&1 &  # 블록 전체 출력을 로그 파일로 리다이렉션하고 백그라운드에서 실행
     local pid=$!
